@@ -1,8 +1,34 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import * as signalR from "@microsoft/signalr";
 
-// const HUB_URL = "https://localhost:7269/gameHub";
-const HUB_URL = "https://sportsmo-api-dev-ehhggcfugdegd0ea.centralus-01.azurewebsites.net/gameHub";
+const HUB_URL = "https://localhost:7269/gameHub";
+//const HUB_URL = "https://sportsmo-api-dev-ehhggcfugdegd0ea.centralus-01.azurewebsites.net/gameHub";
+//const HUB_URL = https://sportsmo-api-test-gncbfqa2ekfqhgb4.centralus-01.azurewebsites.net/gameHub
+type GroupMembersDto = {
+  userId: number;
+  userName: string;
+  firstName?: string;
+  lastName?: string;
+  userProfileImage?: string;
+  amount: number;
+};
+
+type GroupDonationToPlayDto = {
+  groupId: number;
+  groupName: string;
+  favoriteTeamId: number;
+  amount: number;
+  leaderId: number;
+  groupMemberCount: number;
+  groupMembers: GroupMembersDto[];
+};
+
+type DonationResponseDto = {
+  // Add more fields as needed
+  amount: number;
+  donorName?: string;
+  userId?: number;
+};
 
 type PlayDto = {
   id: number;
@@ -15,6 +41,8 @@ type PlayDto = {
   distance?: number;
   startPossessionTeamId?: number;
   quarter?: number;
+  donations?: DonationResponseDto[];
+  groupDonationToPlayDto?: GroupDonationToPlayDto[];
 };
 
 type DriveDto = {
@@ -41,6 +69,60 @@ function App() {
   const [isUserGameJoined, setIsUserGameJoined] = useState<boolean>(false);
   const [isGameJoined, setIsGameJoined] = useState<boolean>(false);
   const [isOpenChannelJoined, setIsOpenChannelJoined] = useState<boolean>(false);
+
+  // Leave group handlers
+  const leaveUserFromGame = () => {
+    if (!userId || !gameId) {
+      showToast("Please enter both User ID and Game ID.", "error");
+      return;
+    }
+    connection?.invoke("LeaveUserFromGame", Number(userId), Number(gameId))
+      .then(() => {
+        setIsUserGameJoined(false);
+        setMessages(msgs => [...msgs, "Left user+game group"]);
+        showToast("Left user+game group", "success");
+        console.log("Left user+game group");
+      })
+      .catch(err => {
+        setMessages(msgs => [...msgs, "LeaveUserFromGame error: " + err]);
+        showToast("LeaveUserFromGame error: " + (err?.message || err), "error");
+        console.error("LeaveUserFromGame error", err);
+      });
+  };
+
+  const leaveGame = () => {
+    if (!gameId) {
+      showToast("Please enter a Game ID.", "error");
+      return;
+    }
+    connection?.invoke("LeaveGame", Number(gameId))
+      .then(() => {
+        setIsGameJoined(false);
+        setMessages(msgs => [...msgs, "Left game group"]);
+        showToast("Left game group", "success");
+        console.log("Left game group");
+      })
+      .catch(err => {
+        setMessages(msgs => [...msgs, "LeaveGame error: " + err]);
+        showToast("LeaveGame error: " + (err?.message || err), "error");
+        console.error("LeaveGame error", err);
+      });
+  };
+
+  const leaveOpenChannel = () => {
+    connection?.invoke("LeaveOpenChannelForLiveScore")
+      .then(() => {
+        setIsOpenChannelJoined(false);
+        setMessages(msgs => [...msgs, "Left open channel for live scores"]);
+        showToast("Left open channel for live scores", "success");
+        console.log("Left open channel for live scores");
+      })
+      .catch(err => {
+        setMessages(msgs => [...msgs, "LeaveOpenChannelForLiveScore error: " + err]);
+        showToast("LeaveOpenChannelForLiveScore error: " + (err?.message || err), "error");
+        console.error("LeaveOpenChannelForLiveScore error", err);
+      });
+  };
 
   // Toast state
   const [toast, setToast] = useState<{ message: string; type: "error" | "info" | "success" } | null>(null);
@@ -268,6 +350,13 @@ function App() {
           {isUserGameJoined ? "Joined" : "Not Joined"}
         </span>
         <button
+          onClick={leaveUserFromGame}
+          style={{ marginLeft: 6 }}
+          disabled={!connection || !isUserGameJoined}
+        >
+          Leave User+Game
+        </button>
+        <button
           onClick={joinGame}
           style={{ marginLeft: 10 }}
           disabled={!connection}
@@ -277,6 +366,13 @@ function App() {
         <span style={{ marginLeft: 8, color: isGameJoined ? "#2a3" : "#a33", fontWeight: "bold" }}>
           {isGameJoined ? "Joined" : "Not Joined"}
         </span>
+        <button
+          onClick={leaveGame}
+          style={{ marginLeft: 6 }}
+          disabled={!connection || !isGameJoined}
+        >
+          Leave Game
+        </button>
       </div>
       <div style={{ marginBottom: 20 }}>
         <button
@@ -289,6 +385,13 @@ function App() {
         <span style={{ marginLeft: 8, color: isOpenChannelJoined ? "#2a3" : "#a33", fontWeight: "bold" }}>
           {isOpenChannelJoined ? "Joined" : "Not Joined"}
         </span>
+        <button
+          onClick={leaveOpenChannel}
+          style={{ marginLeft: 6 }}
+          disabled={!connection || !isOpenChannelJoined}
+        >
+          Leave Open Channel
+        </button>
       </div>
       <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
         {/* Live Game Column */}
@@ -330,6 +433,55 @@ function App() {
                     <div style={{ marginTop: 6, color: "#888" }}>
                       Start Possession Team ID: <b>{play.startPossessionTeamId ?? "-"}</b>
                     </div>
+                    {/* --- Donation & Group Donation Box --- */}
+                    {(!!play.donations?.length || !!play.groupDonationToPlayDto?.length) && (
+                      <div style={{
+                        marginTop: 12,
+                        padding: 12,
+                        background: "#fffbe6",
+                        border: "1px solid #ffe58f",
+                        borderRadius: 6,
+                        boxShadow: "0 1px 4px #0001"
+                      }}>
+                        <div style={{ fontWeight: "bold", color: "#b8860b", marginBottom: 4 }}>
+                          Play Donations & Groups
+                        </div>
+                        <div style={{ fontSize: 13, color: "#333" }}>
+                          <div><b>Play ID:</b> {play.id}</div>
+                          {play.donations && play.donations.length > 0 && (
+                            <div style={{ marginTop: 6 }}>
+                              <b>Donations:</b>
+                              <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
+                                {play.donations.map((don, idx) => (
+                                  <li key={idx}>
+                                    {don.donorName ? <b>{don.donorName}</b> : "User"}: ${don.amount}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {play.groupDonationToPlayDto && play.groupDonationToPlayDto.length > 0 && (
+                            <div style={{ marginTop: 6 }}>
+                              <b>Group Donations:</b>
+                              <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
+                                {play.groupDonationToPlayDto.map((group, idx) => (
+                                  <li key={idx}>
+                                    <b>{group.groupName}</b> (${group.amount}) - Members: {group.groupMemberCount}
+                                    <ul style={{ margin: "2px 0 0 16px", padding: 0 }}>
+                                      {group.groupMembers && group.groupMembers.map((member, mIdx) => (
+                                        <li key={mIdx}>
+                                          {member.userName} (${member.amount})
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div style={{ textAlign: "right", minWidth: 100 }}>
                     <div style={{ fontWeight: "bold", fontSize: 15, color: "#36a" }}>
