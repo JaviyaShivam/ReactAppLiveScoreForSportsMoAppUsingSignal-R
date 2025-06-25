@@ -3,7 +3,7 @@ import * as signalR from "@microsoft/signalr";
 
 const HUB_URL = "https://localhost:7269/gameHub";
 //const HUB_URL = "https://sportsmo-api-dev-ehhggcfugdegd0ea.centralus-01.azurewebsites.net/gameHub";
-//const HUB_URL = https://sportsmo-api-test-gncbfqa2ekfqhgb4.centralus-01.azurewebsites.net/gameHub
+//const HUB_URL = "https://sportsmo-api-test-gncbfqa2ekfqhgb4.centralus-01.azurewebsites.net/gameHub";
 type GroupMembersDto = {
   userId: number;
   userName: string;
@@ -58,6 +58,7 @@ function App() {
   const [connection, setConnection] = useState<signalR.HubConnection | null>(null);
   const [liveGame, setLiveGame] = useState<DriveDto[]>([]);
   const [liveScore, setLiveScore] = useState<any>(null);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [virtualField, setVirtualField] = useState<any>(null);
   const [totalDonations, setTotalDonations] = useState<any>(null);
   const [messages, setMessages] = useState<string[]>([]);
@@ -227,6 +228,15 @@ function App() {
       setOpenChannelScores(scores => [data, ...scores]);
     });
 
+    conn.on("ReceiveUpdatedBalance", (balance: number) => {
+      setMessages((msgs) => [
+        ...msgs,
+        "WalletBalance: " + balance,
+      ]);
+      setWalletBalance(balance);
+      showToast("Received updated wallet balance", "success");
+    });
+
     conn.start()
       .then(() => {
         showToast("SignalR Connected.", "success");
@@ -278,8 +288,141 @@ function App() {
       });
   };
 
+  // Join wallet update channel
+  const joinWalletUpdateChannel = () => {
+    if (!userId) {
+      showToast("Please enter User ID.", "error");
+      return;
+    }
+    connection?.invoke("JoinUserToWalletUpdationChannel", Number(userId))
+      .then(() => {
+        setMessages(msgs => [...msgs, "Joined wallet update channel"]);
+        showToast("Joined wallet update channel", "success");
+{/* --- Independent Donations Entity --- */}
+<div
+  style={{
+    margin: "48px auto 32px auto",
+    padding: 28,
+    background: "#fff",
+    border: "3px solid #0050b3",
+    borderRadius: 16,
+    boxShadow: "0 4px 24px #0050b322",
+    maxWidth: 600,
+    minWidth: 320,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+  }}
+>
+  <h2 style={{
+    color: "#0050b3",
+    marginTop: 0,
+    marginBottom: 24,
+    fontSize: 28,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    fontWeight: 800,
+    textAlign: "center"
+  }}>
+    Donations
+  </h2>
+  {(() => {
+    // Flatten all donations from all drives/plays into a single array
+    const allDonations: Array<any & { driveId: number; playId: number }> = [];
+    liveGame.forEach((drive) => {
+      drive.plays?.forEach((play: PlayDto) => {
+        play.donations?.forEach((donation: any) => {
+          allDonations.push({
+            ...donation,
+            driveId: drive.driveId,
+            playId: play.id,
+            playObj: play,
+            driveObj: drive,
+          });
+        });
+      });
+    });
+    // Reverse so newest donations are at the top (assuming new donations are added last)
+    allDonations.reverse();
+    if (allDonations.length === 0) {
+      return <div style={{ color: "#888", fontSize: 18, marginTop: 16 }}>No donations yet.</div>;
+    }
+    return allDonations.map((donation, idx) => (
+      <div
+        key={`donation-${donation.driveId}-${donation.playId}-${donation.id ?? idx}`}
+        style={{
+          border: "2px solid #52c41a",
+          borderRadius: 10,
+          background: "#f6ffed",
+          padding: 18,
+          marginBottom: 18,
+          boxShadow: "0 2px 8px #0001",
+          maxWidth: 480,
+          width: "100%",
+        }}
+      >
+        <div style={{ fontWeight: "bold", marginBottom: 6, color: "#237804" }}>
+          Donation for Play ID: {donation.playId}
+        </div>
+        <div>
+          <strong>Team ID:</strong> {donation.teamId}
+        </div>
+        <div>
+          <strong>Amount:</strong> {donation.amount}
+        </div>
+        <div>
+          <strong>Type:</strong> {donation.type}
+        </div>
+        <div>
+          <strong>Pledge ID:</strong> {donation.pledgeId ?? "N/A"}
+        </div>
+        <div>
+          <strong>Is Funded:</strong>{" "}
+          <span style={{ color: donation.isFunded ? "#52c41a" : "#f5222d", fontWeight: "bold" }}>
+            {donation.isFunded ? "Yes" : "No"}
+          </span>
+        </div>
+      </div>
+    ));
+  })()}
+</div>
+        console.log("Joined wallet update channel");
+      })
+      .catch(err => {
+        setMessages(msgs => [...msgs, "JoinUserToWalletUpdationChannel error: " + err]);
+        showToast("JoinUserToWalletUpdationChannel error: " + (err?.message || err), "error");
+        console.error("JoinUserToWalletUpdationChannel error", err);
+      });
+  };
+
   return (
     <div style={{ padding: 20, fontFamily: "Arial, sans-serif", background: "#f7f7f7", minHeight: "100vh" }}>
+      {/* Wallet Balance Display */}
+      <div style={{ marginBottom: 16, padding: 12, background: "#fffbe6", border: "1px solid #ffe58f", borderRadius: 8, display: "inline-block" }}>
+        <strong>Wallet Balance:</strong>{" "}
+        {walletBalance !== null ? (
+          <span style={{ color: "#1890ff", fontWeight: "bold" }}>{walletBalance}</span>
+        ) : (
+          <span style={{ color: "#888" }}>Not joined / No data</span>
+        )}
+        <button
+          style={{
+            marginLeft: 16,
+            padding: "4px 12px",
+            background: "#1890ff",
+            color: "#fff",
+            border: "none",
+            borderRadius: 4,
+            cursor: "pointer",
+            fontWeight: "bold",
+          }}
+          onClick={joinWalletUpdateChannel}
+          disabled={!connection || !userId}
+          title={!connection ? "Connect to SignalR first" : !userId ? "Enter User ID" : "Join Wallet Update Channel"}
+        >
+          Join Wallet Update Channel
+        </button>
+      </div>
       {/* Toast Notification */}
       {toast && (
         <div
